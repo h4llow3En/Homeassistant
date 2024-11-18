@@ -1,0 +1,420 @@
+blueprint:
+  name: Tado Heating Controll
+  author: h4llow3En
+  homeassistant:
+    min_version: "2024.11.2"
+  domain: automation
+  source_url: https://github.com/h4llow3En/Homeassistant/blob/main/blueprints/automation/h4llow3En/advanced_tado.yaml
+  description: |
+    This blueprint ist based on/inspired by the [\"🔥 Advanced Heating Control\"](https://github.com/panhans/HomeAssistant/blob/main/blueprints/automation/panhans/advanced_heating_control.yaml) from panhans.
+
+    It is designed to work with the Tado integration and provides a free solution to the paid tado cloud services including:
+    - Home/Away detection
+    - window detection
+    - weather based heating control
+    - thermostat calibration
+    - external temperature sensor support (not tado)
+
+    What is not included:
+    - scheduling - because tado has a very sufficient scheduling system with advanced start
+  input:
+    # Thermostats
+    thermostat_section:
+      name: Tado Room & Sensors
+      icon: mdi:thermostat
+      input:
+        input_tado_room:
+          name: Tado Rooms
+          description: Configured Tado Rooms to control
+          selector:
+            entity:
+              filter:
+                - domain: climate
+                  integration: tado
+              multiple: false
+
+        input_temperature_sensor:
+          name: External Temperature Sensor
+          description: >
+            `optional`
+
+            This is an additional sensor inside your room usually next to your favourite spot. It is used to calibrate the offset of a tado thermostat.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+              multiple: false
+
+    # weather based heating control
+    weather_section:
+      name: Weather
+      icon: mdi:weather-partly-snowy
+      description: ""
+      collapsed: true
+      input:
+        input_outside_temperature:
+          name: Outside Temperature Sensor
+          description: >
+            `optional`
+
+            You can control the switching on and off of your thermostats via the outside temperature.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain:
+                    - weather
+                - domain:
+                    - sensor
+                  device_class: temperature
+              multiple: false
+        input_outside_temperature_threshold:
+          name: Outside temperature thereshold
+          description: Set the temperature threshold for the outside temperature sensor. If the temperature is above the threshold the thermostat will be set to *off*.
+          default: 20
+          selector:
+            number:
+              min: 10.0
+              max: 25.0
+              step: 0.5
+              mode: box
+              unit_of_measurement: °C
+        
+    # calibration
+    calibration_section:
+      name: Calibration
+      icon: mdi:compass
+      description: ""
+      collapsed: true
+      input:
+        input_calibration_timeout:
+          name: Calibration Timeout
+          description: Minimum duration between calibration attempts. This is to prevent too frequent calibrations. To save energy a timeout of 15 minutes is recommended.
+          default:
+            hours: 0
+            minutes: 15
+            seconds: 0
+          selector:
+            duration:
+
+        input_calibration_delta:
+          name: Calibration Delta
+          description: If the difference between the thermostat temperature and the external sensor temperature is greater or less than the calibration delta the thermostat calibration will be triggered.
+          default: 0.5
+          selector:
+            number:
+              min: 0.1
+              max: 2
+              step: 0.1
+              mode: slider
+              unit_of_measurement: °C
+
+        input_claibration_time_on:
+          name: Start of Calibration period
+          description: Time of day to start calibration. Calibrations will not be performed before this time.
+          default: "00:00:00"
+          selector:
+            time:
+        
+        input_claibration_time_off:
+          name: End of Calibration period
+          description: Time of day to end calibration. Calibrations will not be performed after this time.
+          default: "23:59:59"
+          selector:
+            time:
+    # Windows
+    window_section:
+      name: Window & Door Detection
+      icon: mdi:door
+      collapsed: true
+      input:
+        input_windows:
+          name: Windows & Doors
+          description: >
+            `optional`
+            If open during airing your thermostat will be set to *off*.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain:
+                    - binary_sensor
+                    - sensor
+              multiple: true
+
+        input_windows_reaction_time_open:
+          name: Window & Door Reaction Time Open
+          description: >
+            Duration for which a window or door must be open to stop heating.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 30
+          selector:
+            duration:
+
+        input_windows_reaction_time_close:
+          name: Window & Door Reaction Time Close
+          description: >
+            Duration for which a window or door must be closed to start heating.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 30
+          selector:
+            duration:
+
+    # persons
+    person_section:
+      name: Persons
+      icon: mdi:account-multiple
+      collapsed: true
+      input:
+        input_persons:
+          name: Persons
+          description: >
+            `optional`
+            Specify persons to make your heating plan more dynamic. Heating is activated as soon as someone is at home.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain:
+                    - person
+              multiple: true
+
+        input_people_entering_home_duration:
+          name: Enter Home Duration
+          description: >
+            Duration for which someone must be at home for heating to be activated.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 2
+          selector:
+            duration:
+
+        input_people_leaving_home_duration:
+          name: Leaving Home Duration
+          description: >
+            Duration for which someone must be out of the house for heating to be deactivated.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 2
+          selector:
+            duration:
+
+        input_mode_guest:
+          name: Guest mode
+          description: >
+            `optional`
+            If an entity is specified here, it is treated like a person being at home. It's usefull when guests are left alone at the house.
+          default:
+          selector:
+            entity:
+              filter:
+                - domain:
+                    - input_boolean
+                    - binary_sensor
+                    - timer
+              multiple: false
+
+mode: queued
+
+trigger_variables:
+  input_tado_room: !input input_tado_room
+  input_temperature_sensor: !input input_temperature_sensor
+  is_temperature_sensor_defined: "{{ input_temperature_sensor != [] }}"
+  input_outside_temperature: !input input_outside_temperature
+
+  input_persons: !input input_persons
+  input_mode_guest: !input input_mode_guest
+  input_people_entering_home_duration: !input input_people_entering_home_duration
+  input_people_leaving_home_duration: !input input_people_leaving_home_duration
+
+  input_person_count: "{{ input_persons | count }}"
+  is_person_defined: "{{ input_person_count > 0 }}"
+  is_guest_mode_defined: "{{ input_mode_guest != none }}"
+
+trigger:
+  # System
+  - trigger: homeassistant
+    event: start
+    id: temperature_change_hastart
+
+  - trigger: event
+    event_type: automation_reloaded
+    id: temperature_change_reload
+
+  # Tado temperature change
+  - trigger: state
+    entity_id: !input input_tado_room
+    attribute: current_temperature
+    id: temperature_calibration_change
+
+  # External temperature sensor change
+  - trigger: state
+    entity_id: !input input_temperature_sensor
+    id: temperature_calibration_change
+
+  # Weather based heating control
+  - trigger: state
+    entity_id: !input input_outside_temperature
+    id: weather_based_heating_control
+
+  # Window detection
+  - trigger: state
+    entity_id: !input input_windows
+    id: window_detection
+    for: !input input_windows_reaction_time_open
+    to: 'on'
+  
+  - trigger: state
+    entity_id: !input input_windows
+    id: window_detection
+    for: !input input_windows_reaction_time_close
+    to: 'off'
+
+  # Persons
+  - trigger: template
+    value_template: >
+      {{ input_persons  | expand 
+                        | selectattr('state', 'eq', 'home') 
+                        | list 
+                        | count > 0 
+                        
+        or (is_guest_mode_defined and states(input_mode_guest) in ['on','active'] ) }}
+    id: change_person_home
+    for: !input input_people_entering_home_duration
+
+  - trigger: template
+    value_template: >
+        {{ input_persons  | expand 
+                          | selectattr('state', 'eq', 'home') 
+                          | list 
+                          | count == 0 
+          
+          and (not is_guest_mode_defined or (is_guest_mode_defined and states(input_mode_guest) not in ['on','active'])) }}
+    id: change_person_home
+    for: !input input_people_leaving_home_duration
+
+variables:
+  input_tado_room: !input input_tado_room
+  input_temperature_sensor: !input input_temperature_sensor
+  
+  input_calibration_timeout: !input input_calibration_timeout
+  input_calibration_delta: !input input_calibration_delta
+  input_claibration_time_on: !input input_claibration_time_on
+  input_claibration_time_off: !input input_claibration_time_off
+
+
+  input_outside_temperature: !input input_outside_temperature
+  input_outside_temperature_threshold: !input input_outside_temperature_threshold
+
+  input_windows: !input input_windows
+  input_windows_reaction_time_open: !input input_windows_reaction_time_open
+  input_windows_reaction_time_close: !input input_windows_reaction_time_close
+
+  input_persons: !input input_persons
+  input_mode_guest: !input input_mode_guest
+
+  input_person_count: "{{ input_persons | count }}"
+  is_person_defined: "{{ input_person_count > 0 }}"
+  is_guest_mode_defined: "{{ input_mode_guest != none }}"
+
+
+actions:
+  - variables:
+      offset: >
+        {% set temp_offset = ((states(input_temperature_sensor)|float - state_attr(input_tado_room, 'current_temperature')|float) + state_attr(input_tado_room, 'offset_celsius')|float)|round(1) %}
+        {{ -10.9 if temp_offset < -10.9 else 10.9 if temp_offset > 10.9 else temp_offset }}
+      calibration_last_updated: "{{ state_attr(input_tado_room, 'offset_last_changed') if state_attr(input_tado_room, 'offset_last_changed') != None else utcnow() - timedelta(**input_calibration_timeout) }}"
+      state_window: >
+        {% set current_ts = utcnow() | as_datetime %}
+        {% set on_time_delta = current_ts - timedelta(**input_windows_reaction_time_open) %}
+        {% set off_time_delta = current_ts - timedelta(**input_windows_reaction_time_close) %}
+        {% set has_open_windows = input_windows  | expand | selectattr('state', 'in', ['on','open','tilted']) | selectattr('last_changed', '<=', on_time_delta) | list | count > 0 %}
+        {% set closed_but_not_in_duration = input_windows  | expand | selectattr('state', 'in', ['off','closed']) | selectattr('last_changed', '>=', off_time_delta) | list | count > 0 %}
+        {{ has_open_windows or closed_but_not_in_duration }}
+      person_home: "{{ input_persons  | expand | selectattr('state', 'eq', 'home') | list | count > 0 or (is_guest_mode_defined and states(input_mode_guest) in ['on','active'] ) }}"
+  - choose:
+    # Calibration
+    - conditions:
+      - condition: or
+        conditions:
+        - condition: trigger
+          id: temperature_change_hastart
+        - condition: trigger
+          id: temperature_change_reload
+        - condition: trigger
+          id: temperature_calibration_change
+      - condition: template
+        value_template: "{{ states(input_tado_room) == 'auto' and state_attr(input_tado_room, 'preset_mode') == 'home' }}"
+      - condition: template
+        value_template: "{{ state_attr(input_tado_room, 'offset_celsius')|float != offset|float }}"
+      - condition: template
+        value_template: "{{ (states(input_temperature_sensor)|float - state_attr(input_tado_room, 'current_temperature')|float)|abs > input_calibration_delta }}"
+      - condition: or
+        conditions:
+        - condition: template
+          value_template: "{{ input_claibration_time_on != None and input_claibration_time_off != None }}"
+        - condition: time
+          after: !input input_claibration_time_on
+          before: !input input_claibration_time_off
+      sequence:
+        - action: tado.set_climate_temperature_offset
+          data:
+            entity_id: "{{ input_tado_room }}"
+            offset: "{{ offset }}"
+
+    - conditions:
+      - condition: trigger
+        id: weather_based_heating_control
+      - condition: template
+        value_template: "{{ states(input_tado_room) == 'auto' and state_attr(input_tado_room, 'preset_mode') == 'home' }}"
+      sequence:
+        - if: "{{ states(input_outside_temperature) | float > input_outside_temperature_threshold }}"
+          then:
+            - action: climate.set_hvac_mode
+              data:
+                entity_id: "{{ input_tado_room }}"
+                hvac_mode: 'off'
+          else:
+            - action: climate.set_hvac_mode
+              data:
+                entity_id: "{{ input_tado_room }}"
+                hvac_mode: 'auto'
+    - conditions:
+      - condition: trigger
+        id: window_detection
+      - condition: template
+        value_template: "{{ state_attr(input_tado_room, 'preset_mode') == 'home' }}"
+      sequence:
+        - if : "{{ state_window }}"
+          then:
+            - action: climate.set_hvac_mode
+              data:
+                entity_id: "{{ input_tado_room }}"
+                hvac_mode: 'off'
+          else:
+            - action: climate.set_hvac_mode
+              data:
+                entity_id: "{{ input_tado_room }}"
+                hvac_mode: 'auto'
+    - conditions:
+      - condition: trigger
+        id: change_person_home
+      sequence:
+        - if: "{{ person_home }}"
+          then:
+            - action: climate.set_preset_mode
+              data:
+                entity_id: "{{ input_tado_room }}"
+                preset_mode: "home"
+          else:
+            - action: climate.set_preset_mode
+              data:
+                entity_id: "{{ input_tado_room }}"
+                preset_mode: "away"
